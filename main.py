@@ -101,7 +101,17 @@ class TokyoFocusAgent:
                     f'$s.IconLocation = "{icon_path}"; '
                     f'$s.Save()'
                 )
-            subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, check=True)
+            # Run PowerShell silently without flashing a command prompt window on Windows
+            creation_flags = 0
+            if sys.platform == "win32":
+                creation_flags = subprocess.CREATE_NO_WINDOW
+
+            subprocess.run(
+                ["powershell", "-Command", ps_cmd],
+                capture_output=True,
+                check=True,
+                creationflags=creation_flags
+            )
         except Exception as e:
             print(f"Error creating desktop shortcut: {e}")
 
