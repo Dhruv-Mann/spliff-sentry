@@ -1,0 +1,26 @@
+# Python bytecode & cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Local Environment
+.venv/
+venv/
+ENV/
+.env
+
+# Graphic Assets (Keep out of source control to keep repo light)
+*.png
+*.jpg
+*.jpeg
+
+# OS metadata
+.DS_Store
+Thumbs.db
