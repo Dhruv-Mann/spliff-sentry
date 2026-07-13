@@ -214,6 +214,11 @@ class TokyoFocusAgent:
         self.cancel_btn.pack(side="right", padx=10)
         self._setup_btn_hover(self.cancel_btn, "#1e1e1e", "#FF3333", "#FF3333", "black")
         
+        # Bind focus auto-fill behaviors
+        self._setup_entry_focus(self.h_entry)
+        self._setup_entry_focus(self.m_entry)
+        self._setup_entry_focus(self.s_entry)
+        
         # Handle X button window close cleanly
         self.root.protocol("WM_DELETE_WINDOW", sys.exit)
 
@@ -318,6 +323,23 @@ class TokyoFocusAgent:
         btn.config(cursor="hand2")
         btn.bind("<Enter>", lambda e: btn.config(bg=hover_bg, fg=hover_fg))
         btn.bind("<Leave>", lambda e: btn.config(bg=normal_bg, fg=normal_fg))
+
+    def _setup_entry_focus(self, entry):
+        entry.bind("<FocusIn>", lambda e: self._on_focus_in(entry))
+        entry.bind("<FocusOut>", lambda e: self._on_focus_out(entry))
+
+    def _on_focus_in(self, entry):
+        val = entry.get().strip()
+        if val in ("0", "00"):
+            entry.delete(0, tk.END)
+
+    def _on_focus_out(self, entry):
+        val = entry.get().strip()
+        if not val:
+            entry.insert(0, "00")
+        elif val.isdigit() and len(val) == 1:
+            entry.delete(0, tk.END)
+            entry.insert(0, f"0{val}")
 
     def quit_app(self):
         try:
