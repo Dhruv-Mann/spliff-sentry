@@ -15,6 +15,20 @@ class TokyoFocusAgent:
         except Exception:
             pass
 
+        # Prevent multiple instances of the application from running
+        import socket
+        from tkinter import messagebox
+        try:
+            self.lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.lock_socket.bind(('127.0.0.1', 54321))
+        except socket.error:
+            # Another copy is already running. Warn the user and exit cleanly.
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            messagebox.showinfo("Tokyo Focus", "Tokyo Focus is already running in the background.\nCheck your system tray to configure or quit.")
+            temp_root.destroy()
+            sys.exit()
+
         self.root = tk.Tk()
         self.root.title("Tokyo Focus Setup")
         self.root.config(bg="#121212")
