@@ -3,6 +3,7 @@ import time
 import threading
 import os
 import sys
+import subprocess
 from PIL import Image, ImageTk
 
 class TokyoFocusAgent:
@@ -32,9 +33,89 @@ class TokyoFocusAgent:
         self.character_window = None
         self.total_seconds = 1800 # Default to 30 mins
         
+        # Setup Desktop integrations
+        self.create_desktop_shortcut()
+        self.setup_system_tray()
+        
         # Build custom styled startup setup window inside self.root
         self.build_setup_ui()
         self.root.mainloop()
+
+    def create_desktop_shortcut(self):
+        # Determine the directory where the .exe / main.py is running
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(sys.executable)
+            exe_path = sys.executable
+        else:
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
+            exe_path = os.path.abspath(__file__)
+            
+        icon_path = os.path.join(exe_dir, "tokyospliff.ico")
+        
+        # 1. Convert PNG to ICO dynamically if it doesn't exist in the exe directory
+        if not os.path.exists(icon_path) and os.path.exists(self.asset_path):
+            try:
+                img = Image.open(self.asset_path)
+                # Convert and save as ICO with standard sizes
+                img.save(icon_path, format="ICO", sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)])
+            except Exception as e:
+                print(f"Error creating ico file: {e}")
+                
+        # 2. Create/update the shortcut on Desktop
+        try:
+            desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
+            shortcut_path = os.path.join(desktop, "Tokyo Focus.lnk")
+            
+            # Build PowerShell command to create shortcut
+            if exe_path.endswith(".py"):
+                # For python script, TargetPath must be pythonw.exe to run without console window
+                target = sys.executable.replace("python.exe", "pythonw.exe")
+                args = f'"{exe_path}"'
+                ps_cmd = (
+                    f'$s = (New-Object -ComObject WScript.Shell).CreateShortcut("{shortcut_path}"); '
+                    f'$s.TargetPath = "{target}"; '
+                    f'$s.Arguments = \'{args}\'; '
+                    f'$s.IconLocation = "{icon_path}"; '
+                    f'$s.Save()'
+                )
+            else:
+                # For compiled exe, TargetPath is simply the exe path
+                ps_cmd = (
+                    f'$s = (New-Object -ComObject WScript.Shell).CreateShortcut("{shortcut_path}"); '
+                    f'$s.TargetPath = "{exe_path}"; '
+                    f'$s.Arguments = ""; '
+                    f'$s.IconLocation = "{icon_path}"; '
+                    f'$s.Save()'
+                )
+            subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, check=True)
+        except Exception as e:
+            print(f"Error creating desktop shortcut: {e}")
+
+    def setup_system_tray(self):
+        try:
+            import pystray
+            # Use Pillow to open and scale image for system tray
+            if os.path.exists(self.asset_path):
+                tray_img = Image.open(self.asset_path)
+            else:
+                # Fallback blank image if asset doesn't exist
+                tray_img = Image.new("RGBA", (64, 64), (18, 18, 18, 255))
+            
+            # Tray icon standard size is 64x64 or 16x16. Thumbnailing to 64x64 works nicely.
+            tray_img.thumbnail((64, 64), Image.Resampling.LANCZOS)
+            
+            # Define menu action
+            def quit_action(icon, item):
+                icon.stop()
+                self.root.after(0, self.quit_app)
+
+            menu = pystray.Menu(pystray.MenuItem("Quit", quit_action))
+            self.tray_icon = pystray.Icon("tokyo_focus", tray_img, "Tokyo Focus", menu)
+            
+            # Run in a separate thread so it doesn't block Tkinter loop
+            threading.Thread(target=self.tray_icon.run, daemon=True).start()
+        except Exception as e:
+            print(f"Error setting up system tray: {e}")
 
     def _fit_image(self, max_width, max_height):
         if not os.path.exists(self.asset_path):
@@ -215,6 +296,12 @@ class TokyoFocusAgent:
         btn.bind("<Leave>", lambda e: btn.config(bg=normal_bg, fg=normal_fg))
 
     def quit_app(self):
+        try:
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.stop()
+        except Exception:
+            pass
+
         if self.character_window:
             self.character_window.destroy()
             self.character_window = None
