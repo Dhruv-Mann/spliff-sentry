@@ -1,16 +1,34 @@
 # Tokyo Focus Agent 🌸
 
-A lightweight, low-overhead focus assistant desktop widget that slides in from the bottom-right corner of your screen at customizable intervals to keep you productive and accountable.
+A functional focus timer and productivity assistant that runs in the background, helping you track work sessions and stay accountable with smart session management and real-time progress tracking.
 
 ---
 
 ## Features
-* **Custom Timer Setup**: A styled, DPI-aware startup window where you can configure the interval in **Hours, Minutes, and Seconds**.
-* **Zero CPU Overhead**: The countdown runs silently on a background thread with `0%` idle CPU usage.
-* **Opaque Card Interface**: A dark-themed opaque widget (`#121212`) containing the assistant character and dialogue options, ensuring no parts of the UI are clipped or cut through.
-* **Animated Buttons**: Retro arcade-style terminal buttons featuring color-inversion hover animations and pointing-hand cursors.
-* **System Tray Integration**: Running status visibility directly in the Windows system tray. Includes a right-click context menu to cleanly **Quit** the application at any time.
-* **Automatic Desktop Icon**: Generates a persistent `.ico` icon and automatically creates a **Tokyo Focus** shortcut on your Windows Desktop on first run.
+
+### 🎯 Core Productivity
+* **Session Tracking**: Track your focus sessions with automatic numbering (#1, #2, #3...) and completion counts
+* **Smart Timer Management**: Pause/resume functionality without losing progress
+* **Real-Time Status Window**: See time remaining, progress percentage, and session stats at a glance
+* **Multiple Session Actions**:
+  - **Continue** - Mark session as complete and start the next one
+  - **Done for Now** - Pause without resetting your progress
+  - **Reset** - Start fresh from session #1 if you got off track
+  
+### 🎨 Interface & UX
+* **Custom Timer Setup**: Configure intervals in Hours, Minutes, and Seconds with a sleek dark-themed UI
+* **Slide-In Notification**: Character slides in from bottom-right when timer completes
+* **Opaque Card Interface**: Dark-themed (`#121212`) widget with retro terminal aesthetic
+* **Animated Buttons**: Color-inversion hover effects and pointing-hand cursors
+
+### ⚡ Performance & Integration
+* **Zero CPU Overhead**: Runs silently on background thread with 0% idle CPU usage
+* **Enhanced System Tray**:
+  - Show/hide status window
+  - Pause/resume timer
+  - Quick quit
+* **Automatic Desktop Icon**: Generates `.ico` and creates desktop shortcut on first run
+* **Single Instance**: Prevents multiple copies from running simultaneously
 
 ---
 
@@ -52,6 +70,19 @@ If you don't want to run Python scripts directly, you can launch the compiled st
 dist/main.exe
 ```
 You can also double-click the **Tokyo Focus** shortcut created on your desktop.
+
+---
+
+## 💡 How to Use
+
+1. **Start a Session**: Set your desired time and click "Start Focus"
+2. **Track Progress**: Right-click the system tray icon → "Show Status" to see real-time progress
+3. **Pause/Resume**: Right-click tray icon → "Pause/Resume" or use the status window
+4. **When Timer Completes**:
+   - **Cookin' Cuh - Continue**: Session marked complete, new session starts
+   - **Done for Now**: Minimize to tray, resume later
+   - **Caught Slacking... Reset**: Reset all progress back to session #1
+5. **View Stats**: Status window shows session number and total completed sessions
 
 ---
 

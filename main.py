@@ -4,6 +4,7 @@ import threading
 import os
 import sys
 import subprocess
+from datetime import datetime
 from PIL import Image, ImageTk
 
 class TokyoFocusAgent:
@@ -46,6 +47,16 @@ class TokyoFocusAgent:
         self.display_img = self._fit_image(400, 260)
         self.character_window = None
         self.total_seconds = 1800 # Default to 30 mins
+        
+        # Session tracking
+        self.session_count = 0
+        self.completed_sessions = 0
+        self.is_paused = False
+        self.is_running = False
+        self.timer_thread = None
+        self.remaining_seconds = 0
+        self.status_window = None
+        self.session_start_time = None
         
         # Setup Desktop integrations
         self.create_desktop_shortcut()
@@ -128,12 +139,23 @@ class TokyoFocusAgent:
             # Tray icon standard size is 64x64 or 16x16. Thumbnailing to 64x64 works nicely.
             tray_img.thumbnail((64, 64), Image.Resampling.LANCZOS)
             
-            # Define menu action
+            # Define menu actions
+            def show_status(icon, item):
+                self.root.after(0, self.toggle_status_window)
+                
+            def pause_resume(icon, item):
+                self.root.after(0, self.toggle_pause)
+                
             def quit_action(icon, item):
                 icon.stop()
                 self.root.after(0, self.quit_app)
 
-            menu = pystray.Menu(pystray.MenuItem("Quit", quit_action))
+            menu = pystray.Menu(
+                pystray.MenuItem("Show Status", show_status),
+                pystray.MenuItem("Pause/Resume", pause_resume),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Quit", quit_action)
+            )
             self.tray_icon = pystray.Icon("tokyo_focus", tray_img, "Tokyo Focus", menu)
             
             # Run in a separate thread so it doesn't block Tkinter loop
@@ -237,13 +259,32 @@ class TokyoFocusAgent:
         # Hide root setup window
         self.root.withdraw()
         
-        # Start countdown
-        threading.Thread(target=self.countdown_worker, daemon=True).start()
+        # Start new session
+        self.session_count += 1
+        self.session_start_time = datetime.now()
+        self.start_countdown()
+
+    def start_countdown(self):
+        self.remaining_seconds = self.total_seconds
+        self.is_running = True
+        self.is_paused = False
+        self.timer_thread = threading.Thread(target=self.countdown_worker, daemon=True)
+        self.timer_thread.start()
 
     def countdown_worker(self):
-        time.sleep(self.total_seconds)
-        # Push execution back to main UI thread safely
-        self.root.after(0, self.summon_character)
+        while self.remaining_seconds > 0 and self.is_running:
+            if not self.is_paused:
+                time.sleep(1)
+                self.remaining_seconds -= 1
+                # Update status window if open
+                if self.status_window and self.status_window.winfo_exists():
+                    self.root.after(0, self.update_status_display)
+            else:
+                time.sleep(0.1)  # Check pause state frequently
+        
+        if self.is_running and self.remaining_seconds <= 0:
+            # Push execution back to main UI thread safely
+            self.root.after(0, self.summon_character)
 
     def summon_character(self):
         self.character_window = tk.Toplevel(self.root)
@@ -291,33 +332,50 @@ class TokyoFocusAgent:
             self.show_dialogue_ui()
 
     def show_dialogue_ui(self):
+        self.is_running = False  # Stop the timer
+        
         ui_frame = tk.Frame(self.character_window, bg="#121212", bd=2, relief="solid", highlightbackground="#333333")
-        ui_frame.place(relx=0.5, rely=0.82, anchor="center", width=480, height=140)
+        ui_frame.place(relx=0.5, rely=0.82, anchor="center", width=480, height=180)
+        
+        # Session info
+        session_duration = self.format_time(self.total_seconds)
+        info_text = f"Session #{self.session_count} complete!\nDuration: {session_duration} | Completed today: {self.completed_sessions}"
+        info_lbl = tk.Label(ui_frame, text=info_text, fg="#888888", bg="#121212", 
+                           font=("Consolas", 8), justify="center")
+        info_lbl.pack(side="top", pady=(8, 2))
         
         # Upgraded Dialogue Text
         msg = tk.Label(ui_frame, text="Yo, check the clock. Are we locked in,\nor are we just wasting generational time?", 
                        fg="#FFFFFF", bg="#121212", font=("Consolas", 10, "bold"), justify="center")
-        msg.pack(side="top", pady=(10, 6))
+        msg.pack(side="top", pady=(4, 8))
         
         btn_frame = tk.Frame(ui_frame, bg="#121212")
         btn_frame.pack(side="top", fill="x", padx=15, pady=(4, 4))
         
         # Action buttons
-        btn1 = tk.Button(btn_frame, text="[ Cookin' Cuh ]", fg="#00FF00", bg="#1e1e1e", activebackground="#00FF00", activeforeground="black",
-                          font=("Consolas", 9, "bold"), command=self.reset_timer, highlightthickness=0, bd=1)
+        btn1 = tk.Button(btn_frame, text="[ Cookin' Cuh - Continue ]", fg="#00FF00", bg="#1e1e1e", activebackground="#00FF00", activeforeground="black",
+                          font=("Consolas", 9, "bold"), command=self.continue_session, highlightthickness=0, bd=1)
         btn1.pack(side="left", expand=True, fill="x", padx=5)
         self._setup_btn_hover(btn1, "#1e1e1e", "#00FF00", "#00FF00", "black")
         
-        btn2 = tk.Button(btn_frame, text="[ Caught Slacking... ]", fg="#FF3333", bg="#1e1e1e", activebackground="#FF3333", activeforeground="black",
-                          font=("Consolas", 9, "bold"), command=self.shame_user, highlightthickness=0, bd=1)
+        btn2 = tk.Button(btn_frame, text="[ Done for Now ]", fg="#FFA500", bg="#1e1e1e", activebackground="#FFA500", activeforeground="black",
+                          font=("Consolas", 9, "bold"), command=self.pause_session, highlightthickness=0, bd=1)
         btn2.pack(side="right", expand=True, fill="x", padx=5)
-        self._setup_btn_hover(btn2, "#1e1e1e", "#FF3333", "#FF3333", "black")
+        self._setup_btn_hover(btn2, "#1e1e1e", "#FFA500", "#FFA500", "black")
 
+        btn_frame2 = tk.Frame(ui_frame, bg="#121212")
+        btn_frame2.pack(side="top", fill="x", padx=15, pady=(4, 4))
+        
+        btn3 = tk.Button(btn_frame2, text="[ Caught Slacking... Reset ]", fg="#FF3333", bg="#1e1e1e", activebackground="#FF3333", activeforeground="black",
+                          font=("Consolas", 8), command=self.reset_progress, highlightthickness=0, bd=1)
+        btn3.pack(side="top", fill="x")
+        self._setup_btn_hover(btn3, "#1e1e1e", "#FF3333", "#FF3333", "black")
+        
         # Clear Exit button below to stop the application from the UI
-        btn3 = tk.Button(ui_frame, text="[ Exit ]", fg="#FFFFFF", bg="#2a2a2a", activebackground="#FFFFFF", activeforeground="black",
+        btn4 = tk.Button(ui_frame, text="[ Exit App ]", fg="#FFFFFF", bg="#2a2a2a", activebackground="#FFFFFF", activeforeground="black",
                          font=("Consolas", 9, "bold"), command=self.quit_app, highlightthickness=0, bd=1)
-        btn3.pack(side="top", pady=(6, 6))
-        self._setup_btn_hover(btn3, "#2a2a2a", "#FFFFFF", "#FFFFFF", "black")
+        btn4.pack(side="top", pady=(6, 6))
+        self._setup_btn_hover(btn4, "#2a2a2a", "#FFFFFF", "#FFFFFF", "black")
 
     def _setup_btn_hover(self, btn, normal_bg, normal_fg, hover_bg, hover_fg):
         btn.config(cursor="hand2")
@@ -354,17 +412,144 @@ class TokyoFocusAgent:
         self.root.quit()
         self.root.destroy()
 
-    def reset_timer(self):
+    def continue_session(self):
+        """Mark session as completed and start a new one"""
+        self.completed_sessions += 1
+        self.session_count += 1
+        self.session_start_time = datetime.now()
         if self.character_window:
             self.character_window.destroy()
-        # Recycles loop back into thread pool cleanly
-        threading.Thread(target=self.countdown_worker, daemon=True).start()
+        self.start_countdown()
 
-    def shame_user(self):
+    def pause_session(self):
+        """Pause and minimize to tray without starting new session"""
         if self.character_window:
             self.character_window.destroy()
-        # Resets the loop immediately to keep you accountable
-        threading.Thread(target=self.countdown_worker, daemon=True).start()
+        self.is_running = False
+
+    def reset_progress(self):
+        """Reset all progress and restart from session 1"""
+        self.session_count = 0
+        self.completed_sessions = 0
+        if self.character_window:
+            self.character_window.destroy()
+        # Show setup window again
+        self.root.deiconify()
+
+    def toggle_pause(self):
+        """Pause/Resume the current timer"""
+        if self.is_running:
+            self.is_paused = not self.is_paused
+            if self.status_window and self.status_window.winfo_exists():
+                self.update_status_display()
+
+    def toggle_status_window(self):
+        """Show or hide the status window"""
+        if self.status_window and self.status_window.winfo_exists():
+            self.status_window.destroy()
+            self.status_window = None
+        else:
+            self.create_status_window()
+
+    def create_status_window(self):
+        """Create a floating status window showing current progress"""
+        self.status_window = tk.Toplevel(self.root)
+        self.status_window.title("Tokyo Focus Status")
+        self.status_window.config(bg="#121212")
+        self.status_window.attributes("-topmost", True)
+        
+        # Position in bottom-right with increased height for buttons
+        sw, sh = 320, 240
+        x = self.root.winfo_screenwidth() - sw - 20
+        y = self.root.winfo_screenheight() - sh - 100
+        self.status_window.geometry(f"{sw}x{sh}+{x}+{y}")
+        
+        # Title
+        title = tk.Label(self.status_window, text="[ TOKYO FOCUS STATUS ]", 
+                        fg="#00FF00", bg="#121212", font=("Consolas", 11, "bold"))
+        title.pack(pady=(10, 5))
+        
+        # Status frame
+        self.status_frame = tk.Frame(self.status_window, bg="#1e1e1e", bd=1, relief="solid")
+        self.status_frame.pack(fill="both", expand=False, padx=10, pady=(5, 5))
+        
+        # Control buttons frame (created before update_status_display)
+        btn_frame = tk.Frame(self.status_window, bg="#121212")
+        btn_frame.pack(side="bottom", pady=(5, 10), padx=10)
+        
+        pause_btn = tk.Button(btn_frame, text="[ Pause/Resume ]", fg="#FFA500", bg="#1e1e1e",
+                              font=("Consolas", 8, "bold"), command=self.toggle_pause, 
+                              highlightthickness=0, bd=1, width=18)
+        pause_btn.pack(side="left", padx=3)
+        self._setup_btn_hover(pause_btn, "#1e1e1e", "#FFA500", "#FFA500", "black")
+        
+        close_btn = tk.Button(btn_frame, text="[ Close ]", fg="#FFFFFF", bg="#2a2a2a",
+                              font=("Consolas", 8, "bold"), command=self.toggle_status_window,
+                              highlightthickness=0, bd=1, width=12)
+        close_btn.pack(side="left", padx=3)
+        self._setup_btn_hover(close_btn, "#2a2a2a", "#FFFFFF", "#FFFFFF", "black")
+        
+        # Update status display after buttons are created
+        self.update_status_display()
+        
+        # Force geometry update to ensure buttons are visible
+        self.status_window.update()
+        self.status_window.update_idletasks()
+
+    def update_status_display(self):
+        """Update the status window with current timer state"""
+        if not self.status_frame or not self.status_frame.winfo_exists():
+            return
+            
+        # Clear existing content
+        for widget in self.status_frame.winfo_children():
+            widget.destroy()
+        
+        if self.is_running:
+            state_color = "#FFA500" if self.is_paused else "#00FF00"
+            state_text = "PAUSED" if self.is_paused else "RUNNING"
+            
+            state_lbl = tk.Label(self.status_frame, text=f"Status: {state_text}", 
+                                fg=state_color, bg="#1e1e1e", font=("Consolas", 9, "bold"))
+            state_lbl.pack(pady=(10, 5))
+            
+            time_remaining = self.format_time(self.remaining_seconds)
+            time_lbl = tk.Label(self.status_frame, text=f"Time Left: {time_remaining}", 
+                               fg="#FFFFFF", bg="#1e1e1e", font=("Consolas", 12, "bold"))
+            time_lbl.pack(pady=5)
+            
+            progress_pct = ((self.total_seconds - self.remaining_seconds) / self.total_seconds) * 100
+            progress_lbl = tk.Label(self.status_frame, text=f"Progress: {progress_pct:.0f}%", 
+                                   fg="#888888", bg="#1e1e1e", font=("Consolas", 8))
+            progress_lbl.pack(pady=5)
+        else:
+            state_lbl = tk.Label(self.status_frame, text="Status: IDLE", 
+                                fg="#888888", bg="#1e1e1e", font=("Consolas", 9, "bold"))
+            state_lbl.pack(pady=(10, 5))
+            
+            idle_lbl = tk.Label(self.status_frame, text="No active session", 
+                               fg="#FFFFFF", bg="#1e1e1e", font=("Consolas", 10))
+            idle_lbl.pack(pady=5)
+        
+        # Session stats
+        stats_lbl = tk.Label(self.status_frame, 
+                            text=f"Session: #{self.session_count} | Completed: {self.completed_sessions}", 
+                            fg="#888888", bg="#1e1e1e", font=("Consolas", 8))
+        stats_lbl.pack(side="bottom", pady=(5, 10))
+        
+        # Force the window to update and redraw
+        self.status_frame.update_idletasks()
+        if self.status_window and self.status_window.winfo_exists():
+            self.status_window.update_idletasks()
+
+    def format_time(self, seconds):
+        """Format seconds into HH:MM:SS"""
+        h = seconds // 3600
+        m = (seconds % 3600) // 60
+        s = seconds % 60
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
 
 if __name__ == "__main__":
     TokyoFocusAgent()
